@@ -17,6 +17,8 @@ type Playlist struct {
 	songs []Song
 }
 
+var SUPERPLAYLIST = Playlist{name: "SUPERPLAYLIST", songs: []Song{}}
+
 // Playlists Slice de Playlist
 type Playlists []Playlist
 
@@ -28,6 +30,27 @@ func (pls *Playlists) SearchPlaylist(name string) (*Playlist, int, error) {
 		}
 	}
 	return nil, -1, errors.New("playlist not found")
+}
+
+// SearchSong busca una canción en la lista de reproducción y retorna su dirección, posición en la lista y un error si se presentara.
+func (pl *Playlist) SearchSong(songName string) (*Song, int, error) {
+	for i, song := range pl.songs {
+		if song.name == songName {
+			return &song, i, nil
+		}
+	}
+	return nil, -1, errors.New("song not found")
+}
+
+func (pls *Playlists) FullSearch(playName, songName string) (*Playlist, *Song, int, int, error) {
+	playlist, i, err := pls.SearchPlaylist(playName)
+	if err != nil {
+		song, j, err := playlist.SearchSong(songName)
+		if err != nil {
+			return playlist, song, i, j, nil
+		}
+	}
+	return playlist, nil, i, -1, errors.New("playlist not found")
 }
 
 // DeletePlaylist recibe el nombre de una playlist, la elimina y retorna el slice de playlists modificado.
@@ -50,38 +73,22 @@ func (pls *Playlists) AddPlaylist(name string) (*Playlists, error) {
 	return pls, nil
 }
 
-// SearchSong busca una canción en la lista de reproducción y retorna su dirección, posición en la lista y un error si se presentara.
-func (pls *Playlists) SearchSong(playName, songName string) (*Playlist, *Song, int, error) {
-	pl, _, err := pls.SearchPlaylist(playName)
-	if err != nil {
-		for i, song := range pl.songs {
-			if song.name == songName {
-				return pl, &song, i, nil
-			}
-		}
-		return pl, nil, -1, errors.New("song not found")
-	}
-	return nil, nil, -1, errors.New("playlist not found")
-}
-
 // DeleteSong Elimina una canción de la lista de reproducción.
-func (pls *Playlists) DeleteSong(playName, songName string) (*Playlist, error) {
-	pl, _, i, err := pls.SearchSong(playName, songName)
+func (pls *Playlists) DeleteSong(playName, songName string) error {
+	pl, _, _, j, err := pls.FullSearch(playName, songName)
 	if err != nil {
-		pl.songs = append((pl.songs)[:i], (pl.songs)[i+1:]...)
-		return pl, nil
+		(*pl).songs = append((*pl).songs[:j], (*pl).songs[j+1:]...)
 	}
-	return nil, errors.New("song not found")
+	return errors.New("song not found")
 }
 
 // AddSong Añade una canción a la lista de reproducción.
-func (pls *Playlists) AddSong(name, path string) {
-	p.songs = append(p.songs, Song{name, path})
+func (pls *Playlists) AddSong(playName, songName string) error {
+
+	return errors.New("song not found")
 }
 
 // GetSongPath Devuelve el path de una canción en el directorio "mp3_files".
 func GetSongPath(name string) string {
 	return strings.Replace(filepath.Join(songsPath, name+".mp3"), "\\", "/", -1)
 }
-
-// Buscar una playlist en la lista de playlists.
