@@ -42,6 +42,7 @@ func (pl *Playlist) SearchSong(songName string) (*Song, int, error) {
 	return nil, -1, errors.New("song not found")
 }
 
+// FullSearch combina las búsquedas de SearchPlaylist y SearchSong
 func (pls *Playlists) FullSearch(playName, songName string) (*Playlist, *Song, int, int, error) {
 	playlist, i, err := pls.SearchPlaylist(playName)
 	if err != nil {
@@ -84,7 +85,14 @@ func (pls *Playlists) DeleteSong(playName, songName string) error {
 
 // AddSong Añade una canción a la lista de reproducción.
 func (pls *Playlists) AddSong(playName, songName string) error {
-
+	song, _, err := SUPERPLAYLIST.SearchSong(songName)
+	if err != nil {
+		playlist, _, i, j, _ := pls.FullSearch(playName, song.name)
+		if (i != -1) && (j == -1) {
+			playlist.songs = append(playlist.songs, *song)
+		}
+		return errors.New("playlist not found")
+	}
 	return errors.New("song not found")
 }
 
@@ -92,3 +100,5 @@ func (pls *Playlists) AddSong(playName, songName string) error {
 func GetSongPath(name string) string {
 	return strings.Replace(filepath.Join(songsPath, name+".mp3"), "\\", "/", -1)
 }
+
+func ChargeMP3Data
