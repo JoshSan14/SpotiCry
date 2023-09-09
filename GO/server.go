@@ -2,11 +2,9 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -15,31 +13,25 @@ const (
 	BUFFER   = 10000
 )
 
-// Variables globales de uso general.
-var (
-	workingDirectory, _ = os.Getwd()
-	projectDir          = filepath.Dir(workingDirectory)
-	songsPath           = filepath.Join(projectDir, "mp3_files")
-	metaPLS             = Playlists{}
-)
-
 type Message struct {
 	from    string
 	payload []byte
 }
 
 type Server struct {
-	listenAddr string
-	ln         net.Listener
-	quitCh     chan struct{}
-	msgCh      chan Message
+	listenAddr   string
+	ln           net.Listener
+	quitCh       chan struct{}
+	msgCh        chan Message
+	genPlaylists []*Playlists
 }
 
 func NewServer(listenAddr string) *Server {
 	return &Server{
-		listenAddr: listenAddr,
-		quitCh:     make(chan struct{}),
-		msgCh:      make(chan Message, BUFFER),
+		listenAddr:   listenAddr,
+		quitCh:       make(chan struct{}),
+		msgCh:        make(chan Message, BUFFER),
+		genPlaylists: []*Playlists{},
 	}
 }
 
@@ -74,31 +66,30 @@ func (s *Server) acceptLoop() {
 
 		fmt.Println("new connection to the server:", conn.RemoteAddr())
 
-		go s.readLoop(conn)
+		clientPlaylists := &Playlists{}
+		s.genPlaylists = append(s.genPlaylists, clientPlaylists)
+
+		go s.readLoop(conn, clientPlaylists)
 	}
 }
 
-func (s *Server) readLoop(conn net.Conn) {
-	defer func(conn net.Conn) {
-		err := conn.Close()
-		if err != nil {
+func (s *Server) readLoop(conn net.Conn, clientPlaylists *Playlists) {
 
-		}
-	}(conn)
 	buf := make([]byte, BUFFER)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
 			fmt.Println("read error:", err)
-			continue
+			return // Terminar la función si ocurre un error en la lectura
 		}
 
 		// Obtener el mensaje enviado por el cliente.
 		message := string(buf[:n])
 		parts := strings.Split(message, "::")
-		code := parts[0] //(PLAY_S,ADD_S,DEL_S,ADD_PL,DEL_PL)
-		playlist := parts[1]
-		name := parts[2]
+		code := parts[0] //(PLAY_S,ADD_S,DEL_S,ADD_P,DEL_P)
+		playName := parts[1]
+		songTitle := parts[2]
+		extraCode := parts[3]
 
 		// Crear una instancia con la dirección remota del cliente.
 		s.msgCh <- Message{
@@ -106,55 +97,94 @@ func (s *Server) readLoop(conn net.Conn) {
 			payload: []byte(message),
 		}
 
-		fmt.Println(parts)
-
 		// Ejecutar acción dependiendo del contenido del mensaje.
 		switch code {
-		case "PLAY_S": // Envía los datos de la canción que se desea reproducir.
-			sendMP3(conn, parts[2])
-		case "ADD_S": // Añade una canción en la playlist deseada.
 
+		// Ejecuta la búsqueda de una canción y envía sus datos.
+		case "SRH_S":
+			var songs = make([]*Song, 1)
+			song, _, err := SUPERPLAYLIST.SearchSong(songTitle)
+			if err != nil {
+				fmt.Println(err)
+			}
+			songs = append(songs, song)
+			SendSongData(conn, songs)
+
+		// Ejecuta la búsqueda de una playlist y envía sus datos.
+		case "SRH_P":
+			playlist, _, err := clientPlaylists.SearchPlaylist(playName)
+			if err != nil {
+				fmt.Println(err)
+			}
+			SendSongData(conn, playlist.songs)
+
+		// Envía los datos de todas las playlists del cliente.
+		case "SHW_FP":
+			clientPlaylists.SendFullPlaylistsData(conn)
+
+		// Envía los bytes de un archivo MP3 por el servidor.
+		case "PLAY_S":
+			clientPlaylists.SendMP3(conn, playName, songTitle)
+		// Añade una canción a una playlist.
+		case "ADD_S":
+			playlist, err := clientPlaylists.AddSong(playName, songTitle)
+			if err != nil {
+				fmt.Println(err)
+			}
+			SendSongData(conn, playlist.songs)
+		// Elimina una canción de una playlist.
+		case "DEL_S":
+			playlist, err := clientPlaylists.DeleteSong(playName, songTitle)
+			if err != nil {
+				fmt.Println(err)
+			}
+			SendSongData(conn, playlist.songs)
+		// Añade una nueva playlist al slice de playlists.
+		case "ADD_P":
+			_, err := clientPlaylists.AddPlaylist(playName)
+			if err != nil {
+				fmt.Println(err)
+			}
+			clientPlaylists.SendFullPlaylistsData(conn)
+		// Elimina una playlist en el slice de playlists.
+		case "DEL_P":
+			_, err := clientPlaylists.DeletePlaylist(playName)
+			if err != nil {
+				fmt.Println(err)
+			}
+			clientPlaylists.SendFullPlaylistsData(conn)
+		// Filtra la playlist por año.
+		case "FLT_Y":
+			year, _ := strconv.Atoi(extraCode)
+			songs, err := clientPlaylists.FilterByYear(playName, year)
+			if err != nil {
+				fmt.Println(err)
+			}
+			SendSongData(conn, songs)
+		// Filtra la playlist por duración.
+		case "FLT_L":
+			duration, _ := strconv.Atoi(extraCode)
+			songs, err := clientPlaylists.FilterByDuration(playName, duration)
+			if err != nil {
+				fmt.Println(err)
+			}
+			SendSongData(conn, songs)
+		// Filtra la playlist por album.
+		case "FLT_A":
+			songs, err := clientPlaylists.FilterByAlbum(playName, extraCode)
+			if err != nil {
+				fmt.Println(err)
+			}
+			SendSongData(conn, songs)
+		// Caso base:
 		default:
 			_, err = conn.Write([]byte("Invalid Input"))
 			if err != nil {
-				return
+				fmt.Println(err)
 			}
 		}
 
-		_, err = conn.Write([]byte("Message Received"))
-		if err != nil {
-			return
-		}
-
 	}
-}
-
-// sendMP3 Recibe la conexión del cliente y el nombre de la canción y envía los datos de la misma a través del servidor.
-func sendMP3(conn net.Conn, name string) {
-	defer func(conn net.Conn) {
-		err := conn.Close()
-		if err != nil {
-		}
-	}(conn)
-
-	mp3File, err := os.Open(GetSongPath(name))
-	if err != nil {
-		fmt.Println("Error opening .mp3 file:", err)
-		return
-	}
-	defer func(mp3File *os.File) {
-		var err = mp3File.Close()
-		if err != nil {
-		}
-	}(mp3File)
-
-	_, err = io.Copy(conn, mp3File)
-	if err != nil {
-		fmt.Println("Error sending .mp3 file:", err)
-		return
-	}
-
-	fmt.Printf(".mp3 file sent to %s\n", conn.RemoteAddr())
 }
 
 func main() {

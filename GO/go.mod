@@ -3,9 +3,8 @@ module GO_Project
 go 1.20
 
 require (
-	github.com/bogem/id3v2 v1.2.0 // indirect
+	github.com/dhowden/tag v0.0.0-20230630033851-978a0926ee25 // indirect
 	github.com/faiface/beep v1.1.0 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
 	github.com/hajimehoshi/oto v1.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -13,5 +12,4 @@ require (
 	golang.org/x/image v0.0.0-20190227222117-0694c2d4d067 // indirect
 	golang.org/x/mobile v0.0.0-20190415191353-3e0bab5405d6 // indirect
 	golang.org/x/sys v0.0.0-20220712014510-0a85c31ab51e // indirect
-	golang.org/x/text v0.3.2 // indirect
 )
